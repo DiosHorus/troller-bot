@@ -1,6 +1,6 @@
 """
 admin.py - Sistema de administradores del Troller Bot
-Comandos: /addadmin, /removeadmin, /admins
+Comandos: /addadmin, /removeadmin, /admins, /sync
 Solo el dueño del bot puede gestionar admins.
 Creado por +𝟝𝟠𝓵𝓸𝓬𝓸 (mas_58_loco) y Sandia [🍉] (prushkax)
 """
@@ -200,3 +200,30 @@ def setup(
         embed.set_footer(text=f"Total: {len(admin_ids)} admin(s)")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ─────────────────────────────────────────
+    # /sync - Sincronizar comandos (solo dueño)
+    # ─────────────────────────────────────────
+    @tree.command(name="sync", description="🔄 Fuerza la sincronización de comandos en este servidor (solo dueño).")
+    async def sync(interaction: discord.Interaction):
+        log_command(str(interaction.user), "sync", interaction.guild.name)
+
+        if not is_owner(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ Solo el dueño del bot puede usar este comando.", ephemeral=True
+            )
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True)
+            synced = await bot.tree.sync(guild=interaction.guild)
+            await interaction.followup.send(
+                f"✅ Se sincronizaron **{len(synced)}** comando(s) en **{interaction.guild.name}**.",
+                ephemeral=True,
+            )
+            log_success(f"Sincronizados {len(synced)} comandos en {interaction.guild.name}")
+        except Exception as e:
+            log_error_console(f"Error sincronizando comandos: {e}")
+            await interaction.followup.send(
+                f"❌ Error al sincronizar comandos: {e}", ephemeral=True
+            )
