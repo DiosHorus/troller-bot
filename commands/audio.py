@@ -1,15 +1,17 @@
 """
 audio.py - Comando de audio del Troller Bot
-Comando: /audio (random o link de YouTube)
+Comandos slash: /audio (random o link de YouTube)
+Comandos prefijo: t!audio random | t!audio <url>
 Requiere: discord.py[voice], yt-dlp, FFmpeg
 Creado por +𝟝𝟠𝓵𝓸𝓬𝓸 (mas_58_loco) y Sandia [🍉] (prushkax)
 """
 
 import os
-import random
+import random as random_mod
 import asyncio
 import discord
 from discord import app_commands
+from discord.ext import commands
 from utils.helpers import (
     is_bot_admin,
     log_command,
@@ -192,7 +194,7 @@ def _get_random_audio() -> str | None:
     ]
     if not archivos:
         return None
-    return os.path.join(AUDIOS_DIR, random.choice(archivos))
+    return os.path.join(AUDIOS_DIR, random_mod.choice(archivos))
 
 
 async def _download_youtube(url: str) -> str | None:
@@ -236,3 +238,100 @@ async def _download_youtube(url: str) -> str | None:
     except Exception as e:
         log_error_console(f"Error descargando de YouTube: {e}")
         return None
+
+
+async def _play_audio_in_channel(voice_channel, audio_path: str, temp_file: bool):
+    """
+    Conecta al canal de voz, reproduce el audio y desconecta.
+    Función compartida entre slash y prefix commands.
+    """
+    voice_client = await voice_channel.connect()
+    try:
+        source = discord.FFmpegPCMAudio(audio_path, **FFMPEG_OPTIONS)
+        voice_client.play(source)
+
+        while voice_client.is_playing():
+            await asyncio.sleep(0.5)
+
+    finally:
+        if voice_client and voice_client.is_connected():
+            await voice_client.disconnect()
+
+        if temp_file and audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                log_info(f"Archivo temporal eliminado: {os.path.basename(audio_path)}")
+            except Exception as e:
+                log_error_console(f"No se pudo eliminar archivo temporal: {e}")
+
+
+# ─────────────────────────────────────────────────
+# Comandos con prefijo (t!)
+# ─────────────────────────────────────────────────
+
+def setup_prefix(
+    bot: commands.Bot,
+    bot_admins: dict,
+):
+    """Registra el comando de audio con prefijo t!."""
+
+    @bot.command(name="audio", help="🔊 Reproduce audio en voz. Uso: t!audio random | t!audio <url>")
+    async def audio_prefix(ctx: commands.Context, modo: str = None, *, url: str = None):
+        log_command(str(ctx.author), "t!audio", ctx.guild.name)
+
+        if not is_bot_admin(ctx.author.id, ctx.guild.id, bot_admins):
+            await ctx.send("❌ No tienes permisos para usar este comando.")
+            return
+
+        if not modo:
+            await ctx.send("❌ Debes especificar un modo. Uso: `t!audio random` o `t!audio <url>`")
+            return
+
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            await ctx.send("❌ Debes estar en un canal de voz para usar este comando.")
+            return
+
+        voice_channel = ctx.author.voice.channel
+
+        audio_path = None
+        temp_file = False
+
+        try:
+            if modo.lower() == "random":
+                audio_path = _get_random_audio()
+                if not audio_path:
+                    await ctx.send("❌ No hay archivos de audio en la carpeta `audios/`.")
+                    return
+                log_info(f"Audio random seleccionado: {os.path.basename(audio_path)}")
+
+            else:
+                # Tratar 'modo' como URL (o si se proporcionó url separado)
+                link = url if url else modo
+                if modo.lower() == "link" and url:
+                    link = url
+                elif modo.lower() == "link" and not url:
+                    await ctx.send("❌ Debes proporcionar una URL. Uso: `t!audio <url>`")
+                    return
+
+                log_info(f"Descargando audio desde YouTube: {link}")
+                async with ctx.typing():
+                    audio_path = await _download_youtube(link)
+                if not audio_path:
+                    await ctx.send(
+                        f"❌ No se pudo descargar el audio. "
+                        f"Verifica que el enlace sea válido y dure máximo {MAX_DURATION} segundos."
+                    )
+                    return
+                temp_file = True
+                log_success(f"Audio descargado: {os.path.basename(audio_path)}")
+
+            await _play_audio_in_channel(voice_channel, audio_path, temp_file)
+            await ctx.send(f"🔊 Audio reproducido exitosamente en **{voice_channel.name}**.")
+            log_success(f"Audio reproducido en {voice_channel.name} ({ctx.guild.name})")
+
+        except discord.ClientException as e:
+            await ctx.send(f"❌ Error de conexión de voz: {e}")
+            log_error(ctx.guild.id, "audio", str(e))
+        except Exception as e:
+            await ctx.send(f"❌ Ocurrió un error: {e}")
+            log_error(ctx.guild.id, "audio", str(e))

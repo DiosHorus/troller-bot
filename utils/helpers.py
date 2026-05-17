@@ -128,12 +128,13 @@ def is_bot_admin(user_id: int, guild_id: int, bot_admins: dict) -> bool:
 
 
 def can_target(
-    interaction: discord.Interaction,
+    interaction_or_ctx,
     target: discord.Member,
     bot_admins: dict,
 ) -> tuple[bool, str]:
     """
     Verifica si el ejecutor puede aplicar acciones sobre el objetivo.
+    Acepta tanto discord.Interaction (slash) como commands.Context (prefijo).
     Reglas:
       - No puedes actuar sobre ti mismo.
       - No puedes actuar sobre el dueño del bot.
@@ -141,8 +142,14 @@ def can_target(
       - No puedes actuar sobre alguien con rol igual o superior al tuyo.
     Retorna (puede_actuar, razón_si_no).
     """
-    ejecutor = interaction.user
-    guild_id = interaction.guild_id
+    # Soportar tanto Interaction como Context
+    if isinstance(interaction_or_ctx, discord.Interaction):
+        ejecutor = interaction_or_ctx.user
+        guild_id = interaction_or_ctx.guild_id
+    else:
+        # commands.Context
+        ejecutor = interaction_or_ctx.author
+        guild_id = interaction_or_ctx.guild.id
 
     if target.id == ejecutor.id:
         return False, "❌ No puedes aplicar esta acción sobre ti mismo."

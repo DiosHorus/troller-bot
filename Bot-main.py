@@ -1,6 +1,7 @@
 """
 Bot-main.py - Punto de entrada principal del Troller Bot
 Un bot de moderación/troll para Discord.
+Soporta TANTO slash commands (/) como comandos con prefijo (t!).
 Creado por +𝟝𝟠𝓵𝓸𝓬𝓸 (mas_58_loco) y Sandia [🍉] (prushkax)
 
 Uso:
@@ -15,6 +16,7 @@ import asyncio
 import threading
 import discord
 from discord import app_commands
+from discord.ext import commands
 from dotenv import load_dotenv
 from colorama import Fore, Style, init as colorama_init
 
@@ -53,15 +55,18 @@ from commands import audio as audio_module
 # Toggle para mostrar/ocultar logs de uso de comandos en consola
 SHOW_COMMAND_LOGS = True
 
+# Prefijo para comandos de texto
+PREFIX = "t!"
+
 # Configurar intents
 intents = discord.Intents.default()
 intents.members = True
 intents.voice_states = True
-intents.message_content = True
+intents.message_content = True  # Necesario para leer mensajes con prefijo t!
 
-# Crear el cliente del bot
-bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)
+# Crear el bot con prefijo (commands.Bot hereda de discord.Client)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
+tree = bot.tree  # El CommandTree ya viene integrado en commands.Bot
 
 # ─────────────────────────────────────────────
 # Estructuras de datos globales (por servidor)
@@ -98,18 +103,28 @@ async def on_ready():
         else:
             bot_admins[guild.id].add(OWNER_ID)
 
-    # Registrar comandos de cada módulo
+    # Registrar slash commands y prefix commands de cada módulo
     moderation_module.setup(bot, tree, muted_users, deafened_users, voice_banned_users, bot_admins)
     admin_module.setup(bot, tree, bot_admins)
     logs_module.setup(bot, tree, bot_admins)
     audio_module.setup(bot, tree, bot_admins)
 
-    # Sincronizar el árbol de comandos con Discord
+    # Registrar prefix commands (t!) de cada módulo
+    moderation_module.setup_prefix(bot, muted_users, deafened_users, voice_banned_users, bot_admins)
+    admin_module.setup_prefix(bot, bot_admins)
+    logs_module.setup_prefix(bot, bot_admins)
+    audio_module.setup_prefix(bot, bot_admins)
+
+    # Sincronizar el árbol de comandos slash con Discord
     try:
         synced = await tree.sync()
         log_success(f"Se sincronizaron {len(synced)} comando(s) slash.")
     except Exception as e:
-        log_error_console(f"Error sincronizando comandos: {e}")
+        log_error_console(f"Error sincronizando comandos slash: {e}")
+
+    # Contar comandos con prefijo registrados
+    prefix_cmds = len(bot.commands)
+    log_success(f"Se registraron {prefix_cmds} comando(s) con prefijo (t!).")
 
     # Mostrar banner de inicio
     log_bot_ready(str(bot.user), len(bot.guilds))

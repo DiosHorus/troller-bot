@@ -1,6 +1,7 @@
 """
 admin.py - Sistema de administradores del Troller Bot
-Comandos: /addadmin, /removeadmin, /admins, /sync
+Comandos slash: /addadmin, /removeadmin, /admins, /sync
+Comandos prefijo: t!addadmin, t!removeadmin, t!admins, t!sync
 Solo el dueño del bot puede gestionar admins.
 Creado por +𝟝𝟠𝓵𝓸𝓬𝓸 (mas_58_loco) y Sandia [🍉] (prushkax)
 """
@@ -8,8 +9,10 @@ Creado por +𝟝𝟠𝓵𝓸𝓬𝓸 (mas_58_loco) y Sandia [🍉] (prushkax)
 import os
 import discord
 from discord import app_commands
+from discord.ext import commands as ext_commands
 from utils.helpers import (
     is_owner,
+    is_bot_admin,
     OWNER_ID,
     ADMINS_DIR,
     log_command,
@@ -227,3 +230,111 @@ def setup(
             await interaction.followup.send(
                 f"❌ Error al sincronizar comandos: {e}", ephemeral=True
             )
+
+
+# ─────────────────────────────────────────────────
+# Comandos con prefijo (t!)
+# ─────────────────────────────────────────────────
+
+def setup_prefix(
+    bot: ext_commands.Bot,
+    bot_admins: dict,
+):
+    """Registra los comandos de administración con prefijo t!."""
+
+    @bot.command(name="addadmin", help="👑 Agrega un administrador del bot (solo dueño).")
+    async def addadmin_prefix(ctx: ext_commands.Context, usuario: discord.Member):
+        log_command(str(ctx.author), "t!addadmin", ctx.guild.name)
+
+        if not is_owner(ctx.author.id):
+            await ctx.send("❌ Solo el dueño del bot puede usar este comando.")
+            return
+
+        guild_id = ctx.guild.id
+        if guild_id not in bot_admins:
+            bot_admins[guild_id] = {OWNER_ID}
+
+        if usuario.id in bot_admins[guild_id]:
+            await ctx.send(f"⚠️ **{usuario.display_name}** ya es admin del bot.")
+            return
+
+        bot_admins[guild_id].add(usuario.id)
+        save_admins(guild_id, bot_admins[guild_id])
+
+        await ctx.send(f"👑 **{usuario.display_name}** ha sido agregado como admin del bot.")
+        log_success(f"{usuario} fue agregado como admin en {ctx.guild.name}")
+
+    @bot.command(name="removeadmin", help="🚫 Quita un administrador del bot (solo dueño).")
+    async def removeadmin_prefix(ctx: ext_commands.Context, usuario: discord.Member):
+        log_command(str(ctx.author), "t!removeadmin", ctx.guild.name)
+
+        if not is_owner(ctx.author.id):
+            await ctx.send("❌ Solo el dueño del bot puede usar este comando.")
+            return
+
+        guild_id = ctx.guild.id
+
+        if is_owner(usuario.id):
+            await ctx.send("❌ No puedes quitar al dueño del bot como admin.")
+            return
+
+        if usuario.id not in bot_admins.get(guild_id, set()):
+            await ctx.send(f"⚠️ **{usuario.display_name}** no es admin del bot.")
+            return
+
+        bot_admins[guild_id].discard(usuario.id)
+        save_admins(guild_id, bot_admins[guild_id])
+
+        await ctx.send(f"🚫 **{usuario.display_name}** ha sido removido como admin del bot.")
+        log_success(f"{usuario} fue removido como admin en {ctx.guild.name}")
+
+    @bot.command(name="admins", help="📋 Muestra la lista de administradores del bot.")
+    async def admins_prefix(ctx: ext_commands.Context):
+        log_command(str(ctx.author), "t!admins", ctx.guild.name)
+
+        if not is_owner(ctx.author.id):
+            await ctx.send("❌ Solo el dueño del bot puede usar este comando.")
+            return
+
+        guild_id = ctx.guild.id
+        admin_ids = bot_admins.get(guild_id, {OWNER_ID})
+
+        if not admin_ids:
+            await ctx.send("📋 No hay administradores configurados.")
+            return
+
+        lineas = []
+        for i, admin_id in enumerate(admin_ids, 1):
+            miembro = ctx.guild.get_member(admin_id)
+            if miembro:
+                nombre = miembro.display_name
+                es_owner = " 👑 (Dueño)" if is_owner(admin_id) else ""
+                lineas.append(f"**{i}.** {nombre} (`{admin_id}`){es_owner}")
+            else:
+                lineas.append(f"**{i}.** ID: `{admin_id}` (no encontrado en el servidor)")
+
+        embed = discord.Embed(
+            title="📋 Administradores del Bot",
+            description="\n".join(lineas),
+            color=discord.Color.gold(),
+        )
+        embed.set_footer(text=f"Total: {len(admin_ids)} admin(s)")
+
+        await ctx.send(embed=embed)
+
+    @bot.command(name="sync", help="🔄 Fuerza la sincronización de comandos slash en este servidor (solo dueño).")
+    async def sync_prefix(ctx: ext_commands.Context):
+        log_command(str(ctx.author), "t!sync", ctx.guild.name)
+
+        if not is_owner(ctx.author.id):
+            await ctx.send("❌ Solo el dueño del bot puede usar este comando.")
+            return
+
+        try:
+            async with ctx.typing():
+                synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"✅ Se sincronizaron **{len(synced)}** comando(s) en **{ctx.guild.name}**.")
+            log_success(f"Sincronizados {len(synced)} comandos en {ctx.guild.name}")
+        except Exception as e:
+            log_error_console(f"Error sincronizando comandos: {e}")
+            await ctx.send(f"❌ Error al sincronizar comandos: {e}")
