@@ -1,0 +1,18 @@
+# Archivo de entorno (contiene el token secreto)
+.env
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales de audio
+audios/temp_*
+
+# Entorno virtual
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
