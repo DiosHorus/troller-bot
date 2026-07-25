@@ -1,0 +1,18 @@
+# Entorno
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivos de datos generados
+log-*.txt
+*_*.txt
+cookies.txt
+Base de Datos/
+logs/
+Sugerencias.txt
+backup/
+temp.py
